@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Starttimer">
+  <title>Starttimer</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;600&family=Syne:wght@800&display=swap');
+
+    :root {
+      --bg: #0b0f12;
+      --surface: #131920;
+      --border: #1e2d38;
+      --text: #d4e8f0;
+      --muted: #4a6a7a;
+      --accent: #00c8ff;
+      --col-warning: #f0a500;
+      --col-4min: #00c8ff;
+      --col-1min: #ff6b35;
+      --col-start: #00e87a;
+      --col-recall: #e03535;
+      --col-ocs: #e03535;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      padding-bottom: env(safe-area-inset-bottom);
+      user-select: none;
+    }
+
+    #flash {
+      position: fixed; inset: 0; pointer-events: none;
+      z-index: 999; opacity: 0; transition: opacity 0.05s;
+    }
+    #flash.active { opacity: 1; }
+
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px 10px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .logo {
+      font-family: 'Syne', sans-serif; font-size: 18px;
+      font-weight: 800; letter-spacing: -0.3px; color: var(--text);
+    }
+
+    .phase-badge {
+      font-size: 11px; font-weight: 600; letter-spacing: 1.5px;
+      text-transform: uppercase; padding: 4px 10px;
+      border-radius: 20px; border: 1px solid var(--border);
+      color: var(--muted); transition: all 0.3s;
+    }
+
+    /* STARTLINIE PANEL */
+    .line-panel {
+      flex-shrink: 0;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .line-btn-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-ping {
+      flex: 1;
+      padding: 10px 8px;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .btn-ping.pinged {
+      border-color: var(--col-start);
+      color: var(--col-start);
+      background: rgba(0, 232, 122, 0.08);
+    }
+
+    .btn-ping .ping-label { font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; }
+    .btn-ping .ping-coords { font-size: 10px; opacity: 0.7; font-family: 'Share Tech Mono', monospace; }
+
+    .line-distance {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      transition: border-color 0.3s;
+    }
+
+    .line-distance.ocs {
+      border-color: var(--col-ocs);
+      background: rgba(224, 53, 53, 0.1);
+    }
+
+    .dist-value {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 26px;
+      font-weight: 400;
+      color: var(--text);
+      line-height: 1;
+      min-width: 80px;
+      text-align: right;
+      transition: color 0.3s;
+    }
+
+    .dist-value.ocs { color: var(--col-ocs); }
+    .dist-value.close { color: var(--col-warning); }
+    .dist-value.ready { color: var(--col-start); }
+
+    .dist-unit {
+      font-size: 12px;
+      color: var(--muted);
+      min-width: 28px;
+    }
+
+    .dist-status {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      min-width: 50px;
+      text-align: left;
+    }
+
+    .dist-status.ocs { color: var(--col-ocs); }
+    .dist-status.close { color: var(--col-warning); }
+    .dist-status.ok { color: var(--col-start); }
+
+    .btn-clear-line {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+      padding: 0 4px;
+      text-decoration: underline;
+      flex-shrink: 0;
+    }
+
+    /* TIMER AREA */
+    .timer-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0 20px;
+      position: relative;
+      min-height: 0;
+    }
+
+    .ring-wrap {
+      position: relative;
+      width: min(220px, 55vw);
+      aspect-ratio: 1;
+      margin-bottom: 16px;
+    }
+
+    .ring-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .ring-bg { fill: none; stroke: var(--border); stroke-width: 8; }
+    .ring-progress {
+      fill: none; stroke: var(--accent); stroke-width: 8;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.5s linear, stroke 0.4s;
+    }
+
+    .ring-center {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+
+    .time-display {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: clamp(40px, 12vw, 64px);
+      letter-spacing: -2px; line-height: 1;
+      color: var(--text); transition: color 0.3s;
+    }
+    .time-display.urgent { color: var(--col-recall); }
+
+    .phase-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 1px;
+      text-transform: uppercase; color: var(--muted);
+      margin-top: 4px; transition: color 0.3s;
+    }
+
+    .signals {
+      display: flex; gap: 10px; margin-bottom: 0;
+    }
+
+    .signal-dot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+
+    .dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      border: 2px solid var(--border); background: transparent;
+      transition: all 0.3s;
+    }
+    .dot.fired { border-color: transparent; }
+    .dot-label { font-size: 9px; color: var(--muted); letter-spacing: 0.5px; }
+
+    /* CONTROLS */
+    .controls {
+      flex-shrink: 0;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 8px;
+    }
+
+    .btn-row { display: flex; gap: 8px; }
+
+    .btn {
+      flex: 1; padding: 13px 10px;
+      border: none; border-radius: 12px;
+      font-family: 'Syne', sans-serif;
+      font-size: 14px; font-weight: 800;
+      letter-spacing: 0.3px; cursor: pointer;
+      transition: opacity 0.12s, transform 0.1s;
+    }
+    .btn:active { opacity: 0.75; transform: scale(0.97); }
+    .btn-start { background: var(--accent); color: var(--bg); }
+    .btn-sync {
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); font-size: 12px;
+    }
+    .btn-reset { background: var(--surface); border: 1px solid var(--border); color: var(--muted); }
+    .btn-recall { background: var(--col-recall); color: #fff; }
+    .btn:disabled { opacity: 0.3; cursor: default; }
+
+    .status-bar { display: flex; justify-content: center; }
+    .status-text { font-size: 11px; color: var(--muted); letter-spacing: 0.3px; text-align: center; }
+
+    /* RECALL OVERLAY */
+    #recall-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(224, 53, 53, 0.92); z-index: 500;
+      flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    }
+    #recall-overlay.visible { display: flex; }
+    .recall-title { font-family: 'Syne', sans-serif; font-size: 36px; font-weight: 800; color: #fff; letter-spacing: -1px; }
+    .recall-sub { font-size: 15px; color: rgba(255,255,255,0.7); }
+    .btn-recall-close {
+      margin-top: 20px; padding: 14px 40px; background: #fff;
+      color: var(--col-recall); border: none; border-radius: 12px;
+      font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 800; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div id="flash"></div>
+
+<div id="recall-overlay">
+  <div class="recall-title">GENERAL RECALL</div>
+  <div class="recall-sub">Neustart erforderlich</div>
+  <button class="btn-recall-close" onclick="closeRecall()">Neustart</button>
+</div>
+
+<header>
+  <div class="logo">Starttimer</div>
+  <div class="phase-badge" id="phase-badge">Bereit</div>
+</header>
+
+<!-- STARTLINIE -->
+<div class="line-panel">
+  <div class="line-btn-row">
+    <button class="btn-ping" id="btn-schiff" onclick="pingPoint('schiff')">
+      <span class="ping-label">Schiff</span>
+      <span class="ping-coords" id="coords-schiff">nicht gesetzt</span>
+    </button>
+    <button class="btn-ping" id="btn-boot" onclick="pingPoint('boot')">
+      <span class="ping-label">Boot</span>
+      <span class="ping-coords" id="coords-boot">nicht gesetzt</span>
+    </button>
+    <button class="btn-clear-line" onclick="clearLine()">Loeschen</button>
+  </div>
+  <div class="line-distance" id="line-distance" style="display:none">
+    <div class="dist-value" id="dist-value">--</div>
+    <div class="dist-unit">m</div>
+    <div class="dist-status" id="dist-status"></div>
+  </div>
+</div>
+
+<div class="timer-area">
+  <div class="ring-wrap">
+    <svg class="ring-svg" viewBox="0 0 100 100">
+      <circle class="ring-bg" cx="50" cy="50" r="44"/>
+      <circle class="ring-progress" id="ring" cx="50" cy="50" r="44"
+        stroke-dasharray="276.46" stroke-dashoffset="0"/>
+    </svg>
+    <div class="ring-center">
+      <div class="time-display" id="time-display">5:00</div>
+      <div class="phase-label" id="phase-label">Warnsignal</div>
+    </div>
+  </div>
+
+  <div class="signals">
+    <div class="signal-dot">
+      <div class="dot" id="dot-5"></div>
+      <div class="dot-label">5 Min</div>
+    </div>
+    <div class="signal-dot">
+      <div class="dot" id="dot-4"></div>
+      <div class="dot-label">4 Min</div>
+    </div>
+    <div class="signal-dot">
+      <div class="dot" id="dot-1"></div>
+      <div class="dot-label">1 Min</div>
+    </div>
+    <div class="signal-dot">
+      <div class="dot" id="dot-0"></div>
+      <div class="dot-label">Start</div>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <div class="status-bar">
+    <div class="status-text" id="status-text">Timer starten oder auf Startsignal synchronisieren</div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-start" id="btn-main" onclick="handleMain()">Start</button>
+    <button class="btn btn-recall" id="btn-recall" onclick="triggerRecall()" disabled>Recall</button>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-sync" id="btn-sync-4" onclick="syncTo(240)" disabled>Sync 4 Min</button>
+    <button class="btn btn-sync" id="btn-sync-1" onclick="syncTo(60)" disabled>Sync 1 Min</button>
+    <button class="btn btn-reset" onclick="resetTimer()">Reset</button>
+  </div>
+</div>
+
+<script>
+  // ============================================================
+  // CONFIG
+  // ============================================================
+  const SEQUENCE = [
+    { at: 300, label: 'Warnsignal',           color: 'var(--col-warning)', dot: 'dot-5', phase: '5 Min' },
+    { at: 240, label: 'Vorbereitungssignal',  color: 'var(--col-4min)',    dot: 'dot-4', phase: '4 Min' },
+    { at:  60, label: '1-Minuten-Signal',     color: 'var(--col-1min)',    dot: 'dot-1', phase: '1 Min' },
+    { at:   0, label: 'Startsignal',          color: 'var(--col-start)',   dot: 'dot-0', phase: 'Start' },
+  ];
+  const CIRCUMFERENCE = 2 * Math.PI * 44;
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  let remaining = 300;
+  let running   = false;
+  let interval  = null;
+  let audioCtx  = null;
+  let wakeLock  = null;
+
+  // GPS / Startlinie
+  let ptSchiff   = null;   // { lat, lng }
+  let ptBoot     = null;
+  let gpsWatch   = null;
+  let myPos      = null;   // aktuelle Position
+
+  // ============================================================
+  // DOM
+  // ============================================================
+  const timeDisplay = document.getElementById('time-display');
+  const phaseLabel  = document.getElementById('phase-label');
+  const phaseBadge  = document.getElementById('phase-badge');
+  const ring        = document.getElementById('ring');
+  const btnMain     = document.getElementById('btn-main');
+  const btnRecall   = document.getElementById('btn-recall');
+  const statusText  = document.getElementById('status-text');
+  const flash       = document.getElementById('flash');
+  const distPanel   = document.getElementById('line-distance');
+  const distValue   = document.getElementById('dist-value');
+  const distStatus  = document.getElementById('dist-status');
+
+  // ============================================================
+  // WAKE LOCK
+  // ============================================================
+  async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } catch(e) {}
+  }
+  async function releaseWakeLock() {
+    if (wakeLock) { try { await wakeLock.release(); } catch(e) {} wakeLock = null; }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && running) requestWakeLock();
+  });
+
+  // iOS speechSynthesis keepalive
+  setInterval(() => {
+    if (!running) return;
+    if (window.speechSynthesis && !window.speechSynthesis.speaking) {
+      window.speechSynthesis.pause();
+      window.speechSynthesis.resume();
+    }
+  }, 10000);
+
+  // ============================================================
+  // AUDIO
+  // ============================================================
+  function getAudioCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+  }
+
+  function beep(count, freq = 880, duration = 0.15) {
+    try {
+      const ctx = getAudioCtx();
+      for (let i = 0; i < count; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine'; osc.frequency.value = freq;
+        const t = ctx.currentTime + i * (duration + 0.08);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.6, t + 0.01);
+        gain.gain.linearRampToValueAtTime(0, t + duration);
+        osc.start(t); osc.stop(t + duration + 0.01);
+      }
+    } catch(e) {}
+  }
+
+  function longBeep(freq = 440, duration = 1.5) {
+    try {
+      const ctx = getAudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine'; osc.frequency.value = freq;
+      const t = ctx.currentTime;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.7, t + 0.02);
+      gain.gain.linearRampToValueAtTime(0.7, t + duration - 0.1);
+      gain.gain.linearRampToValueAtTime(0, t + duration);
+      osc.start(t); osc.stop(t + duration);
+    } catch(e) {}
+  }
+
+  // ============================================================
+  // SPEECH
+  // ============================================================
+  function speak(text, priority = false) {
+    if (!window.speechSynthesis) return;
+    if (priority) window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'de-DE'; u.rate = 1.05; u.pitch = 1.0; u.volume = 1.0;
+    window.speechSynthesis.speak(u);
+  }
+
+  function announceTime(s) {
+    if (s <= 0) return;
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    if (m > 0 && sec === 0) speak(m === 1 ? 'Eine Minute' : m + ' Minuten', true);
+    else if (m > 0)          speak(m + ' Minuten ' + sec + ' Sekunden', true);
+    else                     speak(String(sec), true);
+  }
+
+  // ============================================================
+  // FLASH
+  // ============================================================
+  function doFlash(color, times = 1) {
+    flash.style.background = color;
+    let count = 0;
+    function step() {
+      flash.classList.add('active');
+      setTimeout(() => {
+        flash.classList.remove('active');
+        count++;
+        if (count < times) setTimeout(step, 150);
+      }, 120);
+    }
+    step();
+  }
+
+  // ============================================================
+  // GPS / STARTLINIE
+  // ============================================================
+  function startGpsWatch() {
+    if (!navigator.geolocation) return;
+    if (gpsWatch !== null) return;
+    gpsWatch = navigator.geolocation.watchPosition(
+      pos => {
+        myPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        updateDistanceDisplay();
+      },
+      err => {},
+      { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+    );
+  }
+
+  function pingPoint(which) {
+    if (!navigator.geolocation) {
+      alert('GPS nicht verfuegbar');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(pos => {
+      const pt = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      if (which === 'schiff') {
+        ptSchiff = pt;
+        const btn = document.getElementById('btn-schiff');
+        btn.classList.add('pinged');
+        document.getElementById('coords-schiff').textContent =
+          pt.lat.toFixed(5) + ' ' + pt.lng.toFixed(5);
+      } else {
+        ptBoot = pt;
+        const btn = document.getElementById('btn-boot');
+        btn.classList.add('pinged');
+        document.getElementById('coords-boot').textContent =
+          pt.lat.toFixed(5) + ' ' + pt.lng.toFixed(5);
+      }
+      if (ptSchiff && ptBoot) {
+        distPanel.style.display = 'flex';
+        startGpsWatch();
+      }
+      updateDistanceDisplay();
+    }, err => {
+      alert('GPS-Fehler: ' + err.message);
+    }, { enableHighAccuracy: true, timeout: 10000 });
+  }
+
+  function clearLine() {
+    ptSchiff = null; ptBoot = null; myPos = null;
+    if (gpsWatch !== null) {
+      navigator.geolocation.clearWatch(gpsWatch);
+      gpsWatch = null;
+    }
+    ['btn-schiff','btn-boot'].forEach(id => {
+      document.getElementById(id).classList.remove('pinged');
+    });
+    document.getElementById('coords-schiff').textContent = 'nicht gesetzt';
+    document.getElementById('coords-boot').textContent   = 'nicht gesetzt';
+    distPanel.style.display = 'none';
+    distValue.textContent = '--';
+    distValue.className = 'dist-value';
+    distStatus.textContent = '';
+    distStatus.className = 'dist-status';
+    distPanel.className = 'line-distance';
+  }
+
+  // Senkrechter Abstand Punkt P zur Linie A--B (in Metern)
+  // Positiv = auf der "Start"-Seite (hinter der Linie)
+  // Negativ = OCS (ueber der Linie)
+  function perpendicularDistanceToLine(p, a, b) {
+    // Alle Koordinaten in Meter umrechnen (Flacherd-Naeherung)
+    const R = 6371000;
+    const lat0 = (a.lat + b.lat) / 2;
+    const cosLat = Math.cos(lat0 * Math.PI / 180);
+
+    const ax = a.lng * cosLat * R * Math.PI / 180;
+    const ay = a.lat * R * Math.PI / 180;
+    const bx = b.lng * cosLat * R * Math.PI / 180;
+    const by = b.lat * R * Math.PI / 180;
+    const px = p.lng * cosLat * R * Math.PI / 180;
+    const py = p.lat * R * Math.PI / 180;
+
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) return 0;
+
+    // Vorzeichenbehafteter senkrechter Abstand (Kreuzprodukt)
+    const cross = (px - ax) * dy - (py - ay) * dx;
+    return cross / len;  // positiv = rechts der Linie A->B
+  }
+
+  function updateDistanceDisplay() {
+    if (!ptSchiff || !ptBoot || !myPos) return;
+
+    const d = perpendicularDistanceToLine(myPos, ptSchiff, ptBoot);
+    const absDist = Math.abs(d);
+    const isOcs = d < 0;  // Vorzeichen haengt von Linienrichtung ab
+
+    distValue.textContent = Math.round(absDist);
+
+    if (isOcs) {
+      distValue.className   = 'dist-value ocs';
+      distStatus.textContent = 'OCS';
+      distStatus.className  = 'dist-status ocs';
+      distPanel.className   = 'line-distance ocs';
+    } else if (absDist < 20) {
+      distValue.className   = 'dist-value ready';
+      distStatus.textContent = 'Linie';
+      distStatus.className  = 'dist-status ok';
+      distPanel.className   = 'line-distance';
+    } else if (absDist < 100) {
+      distValue.className   = 'dist-value close';
+      distStatus.textContent = 'Nahe';
+      distStatus.className  = 'dist-status close';
+      distPanel.className   = 'line-distance';
+    } else {
+      distValue.className   = 'dist-value';
+      distStatus.textContent = '';
+      distStatus.className  = 'dist-status';
+      distPanel.className   = 'line-distance';
+    }
+  }
+
+  // ============================================================
+  // SIGNAL
+  // ============================================================
+  function fireSignal(phase) {
+    const dot = document.getElementById(phase.dot);
+    dot.style.background = phase.color;
+    dot.style.borderColor = phase.color;
+    dot.classList.add('fired');
+
+    if (phase.at === 300)      { longBeep(660, 1.2); doFlash(phase.color, 1); }
+    else if (phase.at === 240) { longBeep(550, 1.2); doFlash(phase.color, 1); }
+    else if (phase.at === 60)  { longBeep(440, 1.2); doFlash(phase.color, 1); }
+    else if (phase.at === 0)   { longBeep(880, 2.0); doFlash(phase.color, 3); }
+
+    updatePhaseDisplay();
+  }
+
+  // ============================================================
+  // DISPLAY
+  // ============================================================
+  function formatTime(s) {
+    const neg = s < 0;
+    const abs = Math.abs(s);
+    const m   = Math.floor(abs / 60);
+    const sec = abs % 60;
+    return (neg ? '-' : '') + m + ':' + String(sec).padStart(2, '0');
+  }
+
+  function updatePhaseDisplay() {
+    const current = SEQUENCE.slice().reverse().find(p => p.at >= remaining) || SEQUENCE[0];
+    const progress = Math.max(0, Math.min(1, remaining / 300));
+    ring.style.strokeDashoffset = CIRCUMFERENCE * (1 - progress);
+    ring.style.stroke = current.color;
+
+    timeDisplay.classList.toggle('urgent', remaining <= 10 && remaining > 0);
+
+    phaseBadge.style.borderColor = current.color;
+    phaseBadge.style.color       = current.color;
+    phaseBadge.textContent       = current.phase;
+    phaseLabel.textContent       = current.label;
+    phaseLabel.style.color       = current.color;
+  }
+
+  // ============================================================
+  // TICK
+  // ============================================================
+  function tick() {
+    remaining--;
+    timeDisplay.textContent = formatTime(remaining);
+
+    // Signale
+    SEQUENCE.forEach(phase => {
+      if (remaining === phase.at) {
+        fireSignal(phase);
+        if (phase.at === 0) {
+          statusText.textContent = 'Rennen laeuft';
+          speak('Start', true);
+        }
+      }
+    });
+
+    // Stimme: alle 30s
+    if (remaining > 60) {
+      if (remaining % 30 === 0 && remaining !== 300 && remaining !== 240) announceTime(remaining);
+    } else if (remaining > 20) {
+      if (remaining % 10 === 0 && remaining !== 60) announceTime(remaining);
+    } else if (remaining > 0) {
+      announceTime(remaining);
+    }
+
+    // Beeps
+    if (remaining === 70) statusText.textContent = '10 Sekunden bis 1-Minuten-Signal';
+    if (remaining > 60 && remaining <= 70) beep(1, 660, 0.08);
+    if (remaining === 10) statusText.textContent = '10 Sekunden bis Start!';
+    if (remaining > 0 && remaining <= 10) beep(1, 880, 0.08);
+
+    updatePhaseDisplay();
+
+    if (remaining <= -300) { clearInterval(interval); running = false; }
+  }
+
+  // ============================================================
+  // CONTROLS
+  // ============================================================
+  function handleMain() {
+    if (!running) startTimer(); else pauseTimer();
+  }
+
+  function startTimer() {
+    getAudioCtx();
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance('');
+      u.lang = 'de-DE'; u.volume = 0;
+      window.speechSynthesis.speak(u);
+    }
+    running = true;
+    requestWakeLock();
+    if (ptSchiff && ptBoot) startGpsWatch();
+    btnMain.textContent = 'Pause';
+    btnMain.style.background = 'var(--col-warning)';
+    btnRecall.disabled = false;
+    document.getElementById('btn-sync-4').disabled = false;
+    document.getElementById('btn-sync-1').disabled = false;
+    statusText.textContent = 'Sequenz laeuft';
+    if (remaining === 300) fireSignal(SEQUENCE[0]);
+    interval = setInterval(tick, 1000);
+  }
+
+  function pauseTimer() {
+    running = false;
+    clearInterval(interval);
+    releaseWakeLock();
+    btnMain.textContent = 'Weiter';
+    btnMain.style.background = 'var(--col-4min)';
+    statusText.textContent = 'Pausiert';
+  }
+
+  function syncTo(seconds) {
+    if (!running) return;
+    const diff = remaining - seconds;
+    if (diff > 0 && diff < 60) {
+      remaining = seconds;
+      timeDisplay.textContent = formatTime(remaining);
+      updatePhaseDisplay();
+      statusText.textContent = 'Auf ' + (seconds / 60) + ' Min synchronisiert';
+      beep(2, 660, 0.1);
+    } else {
+      statusText.textContent = 'Sync nur innerhalb 60s moeglich';
+    }
+  }
+
+  function resetTimer() {
+    clearInterval(interval);
+    running = false;
+    remaining = 300;
+    releaseWakeLock();
+
+    timeDisplay.textContent = '5:00';
+    timeDisplay.classList.remove('urgent');
+    phaseLabel.textContent = 'Warnsignal';
+    phaseLabel.style.color = 'var(--muted)';
+    phaseBadge.textContent = 'Bereit';
+    phaseBadge.style.borderColor = 'var(--border)';
+    phaseBadge.style.color = 'var(--muted)';
+    ring.style.strokeDashoffset = 0;
+    ring.style.stroke = 'var(--accent)';
+
+    btnMain.textContent = 'Start';
+    btnMain.style.background = 'var(--accent)';
+    btnRecall.disabled = true;
+    document.getElementById('btn-sync-4').disabled = true;
+    document.getElementById('btn-sync-1').disabled = true;
+    statusText.textContent = 'Timer starten oder auf Startsignal synchronisieren';
+
+    ['dot-5','dot-4','dot-1','dot-0'].forEach(id => {
+      const d = document.getElementById(id);
+      d.style.background = 'transparent';
+      d.style.borderColor = 'var(--border)';
+      d.classList.remove('fired');
+    });
+  }
+
+  function triggerRecall() {
+    clearInterval(interval);
+    running = false;
+    beep(6, 440, 0.2);
+    doFlash('var(--col-recall)', 5);
+    document.getElementById('recall-overlay').classList.add('visible');
+  }
+
+  function closeRecall() {
+    document.getElementById('recall-overlay').classList.remove('visible');
+    resetTimer();
+  }
+</script>
+</body>
+</html>
